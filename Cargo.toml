@@ -1,0 +1,21 @@
+[package]
+name = "eodhd-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server for EODHD financial data API"
+
+[dependencies]
+rmcp = { version = "0.16", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
