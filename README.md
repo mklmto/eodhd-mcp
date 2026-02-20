@@ -21,7 +21,7 @@ A fast, compiled [MCP](https://modelcontextprotocol.io/) server written in Rust 
 ### Build
 
 ```bash
-git clone https://github.com/yourusername/eodhd-mcp.git
+git clone https://github.com/mklmto/eodhd-mcp.git
 cd eodhd-mcp
 cargo build --release
 ```
@@ -127,6 +127,14 @@ src/
   format.rs    Hybrid markdown/JSON output formatting
 ```
 
+## Disclaimer
+
+This project is an independent, unofficial integration and is **not affiliated with, endorsed by, or sponsored by EODHD (EOD Historical Data)**. It is a thin API client — it does not store, cache, or redistribute any financial data.
+
+**You must have your own EODHD API subscription** to use this server. All data retrieved through this tool is subject to [EODHD's Terms and Conditions](https://eodhd.com/financial-apis/terms-conditions). Your rights to use, display, or redistribute the data depend on your subscription tier (personal, commercial, enterprise). It is your responsibility to comply with EODHD's terms for your plan.
+
+Financial data provided by EODHD is not necessarily real-time nor guaranteed to be accurate. It is not appropriate for trading purposes. The authors of this software bear no responsibility for any trading or investment losses.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
