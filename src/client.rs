@@ -19,10 +19,7 @@ impl EodhdClient {
 
     async fn get(&self, path: &str, params: &[(&str, &str)]) -> Result<Value, String> {
         let url = format!("{}{}", BASE_URL, path);
-        let mut all_params: Vec<(&str, &str)> = vec![
-            ("api_token", &self.api_key),
-            ("fmt", "json"),
-        ];
+        let mut all_params: Vec<(&str, &str)> = vec![("api_token", &self.api_key), ("fmt", "json")];
         all_params.extend_from_slice(params);
 
         let resp = self
@@ -43,8 +40,13 @@ impl EodhdClient {
             return Err(format!("API error (HTTP {}): {}", status, body));
         }
 
-        serde_json::from_str(&body)
-            .map_err(|e| format!("Failed to parse JSON: {} — body: {}", e, &body[..body.len().min(500)]))
+        serde_json::from_str(&body).map_err(|e| {
+            format!(
+                "Failed to parse JSON: {} — body: {}",
+                e,
+                &body[..body.len().min(500)]
+            )
+        })
     }
 
     // ── Search ──────────────────────────────────────────────────────────
@@ -127,16 +129,13 @@ impl EodhdClient {
 
     // ── Fundamentals ────────────────────────────────────────────────────
 
-    pub async fn fundamentals(
-        &self,
-        symbol: &str,
-        filter: Option<&str>,
-    ) -> Result<Value, String> {
+    pub async fn fundamentals(&self, symbol: &str, filter: Option<&str>) -> Result<Value, String> {
         let mut params: Vec<(&str, &str)> = Vec::new();
         if let Some(v) = filter {
             params.push(("filter", v));
         }
-        self.get(&format!("/fundamentals/{}", symbol), &params).await
+        self.get(&format!("/fundamentals/{}", symbol), &params)
+            .await
     }
 
     // ── Dividends ───────────────────────────────────────────────────────
@@ -188,10 +187,7 @@ impl EodhdClient {
     ) -> Result<Value, String> {
         let limit_str = limit.unwrap_or(50).to_string();
         let offset_str = offset.unwrap_or(0).to_string();
-        let mut params: Vec<(&str, &str)> = vec![
-            ("limit", &limit_str),
-            ("offset", &offset_str),
-        ];
+        let mut params: Vec<(&str, &str)> = vec![("limit", &limit_str), ("offset", &offset_str)];
         if let Some(v) = symbol {
             params.push(("s", v));
         }
@@ -265,10 +261,7 @@ impl EodhdClient {
     ) -> Result<Value, String> {
         let limit_str = limit.unwrap_or(50).to_string();
         let offset_str = offset.unwrap_or(0).to_string();
-        let mut params: Vec<(&str, &str)> = vec![
-            ("limit", &limit_str),
-            ("offset", &offset_str),
-        ];
+        let mut params: Vec<(&str, &str)> = vec![("limit", &limit_str), ("offset", &offset_str)];
         if let Some(v) = filters {
             params.push(("filters", v));
         }
@@ -308,10 +301,7 @@ impl EodhdClient {
     ) -> Result<Value, String> {
         let limit_str = limit.unwrap_or(50).to_string();
         let offset_str = offset.unwrap_or(0).to_string();
-        let mut params: Vec<(&str, &str)> = vec![
-            ("limit", &limit_str),
-            ("offset", &offset_str),
-        ];
+        let mut params: Vec<(&str, &str)> = vec![("limit", &limit_str), ("offset", &offset_str)];
         if let Some(v) = from {
             params.push(("from", v));
         }
@@ -454,7 +444,12 @@ impl EodhdClient {
             "long_term" => "/ust/long-term-rates",
             "yield" => "/ust/yield-rates",
             "real_yield" => "/ust/real-yield-rates",
-            _ => return Err(format!("Invalid treasury rate type: '{}'. Use: bill, long_term, yield, real_yield", rate_type)),
+            _ => {
+                return Err(format!(
+                    "Invalid treasury rate type: '{}'. Use: bill, long_term, yield, real_yield",
+                    rate_type
+                ))
+            }
         };
         self.get(path, &params).await
     }
@@ -482,5 +477,49 @@ impl EodhdClient {
 
     pub async fn user(&self) -> Result<Value, String> {
         self.get("/user", &[]).await
+    }
+
+    // ── Unicornbay US Options ───────────────────────────────────────────
+
+    pub async fn options_query(
+        &self,
+        mode: &str,
+        query_params: &[(String, String)],
+    ) -> Result<Value, String> {
+        let path = format!("/mp/unicornbay/options/{}", mode);
+        let params_refs: Vec<(&str, &str)> = query_params
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        self.get(&path, &params_refs).await
+    }
+
+    /// Issue a GET against a fully-formed URL (used to follow `links.next` pagination links).
+    /// The URL already contains api_token; do NOT append our own.
+    pub async fn options_follow_url(&self, url: &str) -> Result<Value, String> {
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        let status = resp.status();
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+        if !status.is_success() {
+            return Err(format!("API error (HTTP {}): {}", status, body));
+        }
+
+        serde_json::from_str(&body).map_err(|e| {
+            format!(
+                "Failed to parse JSON: {} — body: {}",
+                e,
+                &body[..body.len().min(500)]
+            )
+        })
     }
 }

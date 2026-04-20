@@ -192,3 +192,70 @@ pub struct MarketCapParams {
     /// End date (YYYY-MM-DD). Optional.
     pub to: Option<String>,
 }
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct OptionsParams {
+    /// Mode: "eod" (end-of-day option records with full Greeks: delta/gamma/theta/vega/rho,
+    /// bid/ask/volume/OI — time series per contract), "contracts" (contract metadata only:
+    /// strike/expiry/type — lighter than eod), or "underlyings" (list of ~6,000 covered US
+    /// underlyings; ignores all filters).
+    pub mode: String,
+
+    /// Underlying ticker WITHOUT exchange suffix, e.g. "AAPL" (not "AAPL.US"). Filter for eod/contracts.
+    pub underlying_symbol: Option<String>,
+
+    /// OCC-format contract symbol, e.g. "AAPL250321C00150000". Filter for eod/contracts.
+    pub contract: Option<String>,
+
+    /// Option type: "call" or "put". Filter for eod/contracts.
+    pub option_type: Option<String>,
+
+    /// Minimum strike price (inclusive). Filter for eod/contracts.
+    pub strike_from: Option<f64>,
+
+    /// Maximum strike price (inclusive). Filter for eod/contracts.
+    pub strike_to: Option<f64>,
+
+    /// Earliest expiration date (YYYY-MM-DD). Filter for eod/contracts.
+    pub exp_date_from: Option<String>,
+
+    /// Latest expiration date (YYYY-MM-DD). Filter for eod/contracts.
+    pub exp_date_to: Option<String>,
+
+    /// Exact expiration date (YYYY-MM-DD). Filter for eod/contracts.
+    pub exp_date_eq: Option<String>,
+
+    /// Earliest trade date (YYYY-MM-DD). Filter for eod/contracts.
+    pub tradetime_from: Option<String>,
+
+    /// Latest trade date (YYYY-MM-DD). Filter for eod/contracts.
+    pub tradetime_to: Option<String>,
+
+    /// Expiration cycle type: "weekly", "monthly", "quarterly", etc. Filter for eod/contracts.
+    pub expiration_type: Option<String>,
+
+    /// Sort by field name (ascending). Prefix with "-" for descending,
+    /// e.g. "-tradetime", "strike", "exp_date", "volume", "open_interest".
+    pub sort: Option<String>,
+
+    /// Pagination offset, default 0.
+    pub page_offset: Option<u32>,
+
+    /// Per-page record cap (default 1000, server max 1000 — values above 1000 are clamped).
+    pub page_limit: Option<u32>,
+
+    /// Sparse fieldset: comma-separated attribute names, e.g.
+    /// "contract,bid,ask,delta,gamma,theta,vega,rho,tradetime".
+    /// Sent as fields[options-eod] in eod mode and fields[options-contracts] in contracts mode.
+    pub fields: Option<String>,
+
+    /// If true, flatten the JSON:API envelope (drops type/attributes wrapping). Default false.
+    pub compact: Option<bool>,
+
+    /// If true, automatically follow links.next pagination links and merge data arrays.
+    /// Default false. Capped by max_pages.
+    pub auto_paginate: Option<bool>,
+
+    /// Maximum pages fetched when auto_paginate is true. Default 5.
+    pub max_pages: Option<u32>,
+}

@@ -1,10 +1,8 @@
 use rmcp::{
-    handler::server::tool::ToolRouter,
-    handler::server::wrapper::Parameters,
-    model::*,
-    tool, tool_handler, tool_router,
-    ErrorData as McpError, ServerHandler,
+    handler::server::tool::ToolRouter, handler::server::wrapper::Parameters, model::*, tool,
+    tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
+use serde_json::Value;
 
 use crate::client::EodhdClient;
 use crate::format::format_value;
@@ -53,8 +51,11 @@ impl EodhdServer {
                 params.limit,
             )
             .await
-            .map_err(|e| err(e))?;
-        ok_text(format_value(&format!("Search results for '{}'", params.query), &data))
+            .map_err(err)?;
+        ok_text(format_value(
+            &format!("Search results for '{}'", params.query),
+            &data,
+        ))
     }
 
     // ── 2. Price ────────────────────────────────────────────────────────
@@ -68,37 +69,43 @@ impl EodhdServer {
         Parameters(params): Parameters<PriceParams>,
     ) -> Result<CallToolResult, McpError> {
         let data = match params.mode.as_str() {
-            "eod" => self
-                .client
-                .eod(
-                    &params.symbol,
-                    params.from.as_deref(),
-                    params.to.as_deref(),
-                    params.period.as_deref(),
-                    params.order.as_deref(),
-                )
-                .await,
-            "intraday" => self
-                .client
-                .intraday(
-                    &params.symbol,
-                    params.interval.as_deref(),
-                    params.from.as_deref(),
-                    params.to.as_deref(),
-                )
-                .await,
-            "realtime" => self
-                .client
-                .realtime(&params.symbol, params.extra_symbols.as_deref())
-                .await,
+            "eod" => {
+                self.client
+                    .eod(
+                        &params.symbol,
+                        params.from.as_deref(),
+                        params.to.as_deref(),
+                        params.period.as_deref(),
+                        params.order.as_deref(),
+                    )
+                    .await
+            }
+            "intraday" => {
+                self.client
+                    .intraday(
+                        &params.symbol,
+                        params.interval.as_deref(),
+                        params.from.as_deref(),
+                        params.to.as_deref(),
+                    )
+                    .await
+            }
+            "realtime" => {
+                self.client
+                    .realtime(&params.symbol, params.extra_symbols.as_deref())
+                    .await
+            }
             other => Err(format!(
                 "Invalid mode '{}'. Use: eod, intraday, realtime",
                 other
             )),
         }
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
-        let label = format!("{} price — {} ({})", params.symbol, params.mode,
+        let label = format!(
+            "{} price — {} ({})",
+            params.symbol,
+            params.mode,
             match params.mode.as_str() {
                 "eod" => params.period.as_deref().unwrap_or("daily").to_string(),
                 "intraday" => params.interval.as_deref().unwrap_or("5m").to_string(),
@@ -123,7 +130,7 @@ impl EodhdServer {
             .client
             .fundamentals(&params.symbol, params.filter.as_deref())
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
         let label = match &params.filter {
             Some(f) => format!("{} fundamentals ({})", params.symbol, f),
             None => format!("{} fundamentals (full)", params.symbol),
@@ -142,20 +149,22 @@ impl EodhdServer {
         Parameters(params): Parameters<DividendsSplitsParams>,
     ) -> Result<CallToolResult, McpError> {
         let data = match params.data_type.as_str() {
-            "dividends" => self
-                .client
-                .dividends(&params.symbol, params.from.as_deref(), params.to.as_deref())
-                .await,
-            "splits" => self
-                .client
-                .splits(&params.symbol, params.from.as_deref(), params.to.as_deref())
-                .await,
+            "dividends" => {
+                self.client
+                    .dividends(&params.symbol, params.from.as_deref(), params.to.as_deref())
+                    .await
+            }
+            "splits" => {
+                self.client
+                    .splits(&params.symbol, params.from.as_deref(), params.to.as_deref())
+                    .await
+            }
             other => Err(format!(
                 "Invalid data_type '{}'. Use: dividends, splits",
                 other
             )),
         }
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
         ok_text(format_value(
             &format!("{} {} history", params.symbol, params.data_type),
@@ -174,9 +183,7 @@ impl EodhdServer {
         Parameters(params): Parameters<NewsParams>,
     ) -> Result<CallToolResult, McpError> {
         if params.symbol.is_none() && params.topic.is_none() {
-            return Err(err(
-                "Either 'symbol' or 'topic' must be provided.".into(),
-            ));
+            return Err(err("Either 'symbol' or 'topic' must be provided.".into()));
         }
 
         let news_data = self
@@ -190,13 +197,17 @@ impl EodhdServer {
                 params.offset,
             )
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         let mut out = format_value("Financial News", &news_data);
 
         if params.include_sentiment.unwrap_or(false) {
             if let Some(ref sym) = params.symbol {
-                match self.client.sentiment(sym, params.from.as_deref(), params.to.as_deref()).await {
+                match self
+                    .client
+                    .sentiment(sym, params.from.as_deref(), params.to.as_deref())
+                    .await
+                {
                     Ok(sent) => {
                         out.push_str("\n\n---\n\n");
                         out.push_str(&format_value(&format!("Sentiment for {}", sym), &sent));
@@ -232,7 +243,7 @@ impl EodhdServer {
                 params.order.as_deref(),
             )
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         ok_text(format_value(
             &format!(
@@ -265,7 +276,7 @@ impl EodhdServer {
                 params.offset,
             )
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         ok_text(format_value("Stock Screener Results", &data))
     }
@@ -282,30 +293,30 @@ impl EodhdServer {
     ) -> Result<CallToolResult, McpError> {
         let data = match params.mode.as_str() {
             "indicators" => {
-                let country = params
-                    .country
-                    .as_deref()
-                    .ok_or_else(|| err("'country' is required for indicators mode (ISO Alpha-3, e.g. 'USA')".into()))?;
+                let country = params.country.as_deref().ok_or_else(|| {
+                    err(
+                        "'country' is required for indicators mode (ISO Alpha-3, e.g. 'USA')"
+                            .into(),
+                    )
+                })?;
                 self.client
                     .macro_indicator(country, params.indicator.as_deref())
                     .await
             }
-            "events" => self
-                .client
-                .economic_events(
-                    params.from.as_deref(),
-                    params.to.as_deref(),
-                    params.country.as_deref(),
-                    params.limit,
-                    params.offset,
-                )
-                .await,
-            other => Err(format!(
-                "Invalid mode '{}'. Use: indicators, events",
-                other
-            )),
+            "events" => {
+                self.client
+                    .economic_events(
+                        params.from.as_deref(),
+                        params.to.as_deref(),
+                        params.country.as_deref(),
+                        params.limit,
+                        params.offset,
+                    )
+                    .await
+            }
+            other => Err(format!("Invalid mode '{}'. Use: indicators, events", other)),
         }
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
         let label = match params.mode.as_str() {
             "indicators" => format!(
@@ -337,7 +348,7 @@ impl EodhdServer {
                 params.limit,
             )
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         let label = match &params.symbol {
             Some(s) => format!("Insider Transactions — {}", s),
@@ -374,7 +385,7 @@ impl EodhdServer {
                 params.to.as_deref(),
             )
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         ok_text(format_value(
             &format!("{} Calendar", capitalize(&params.calendar_type)),
@@ -419,14 +430,11 @@ impl EodhdServer {
                 other
             )),
         }
-        .map_err(|e| err(e))?;
+        .map_err(err)?;
 
         let label = match params.mode.as_str() {
             "list" => "Available Exchanges".to_string(),
-            "symbols" => format!(
-                "Symbols on {}",
-                params.exchange.as_deref().unwrap_or("?")
-            ),
+            "symbols" => format!("Symbols on {}", params.exchange.as_deref().unwrap_or("?")),
             "details" => format!(
                 "Exchange Details — {}",
                 params.exchange.as_deref().unwrap_or("?")
@@ -455,7 +463,7 @@ impl EodhdServer {
                 params.symbols.as_deref(),
             )
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         ok_text(format_value(
             &format!(
@@ -481,16 +489,13 @@ impl EodhdServer {
             .client
             .treasury_rates(&params.rate_type, params.year)
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         ok_text(format_value(
             &format!(
                 "US Treasury — {}{}",
                 params.rate_type,
-                params
-                    .year
-                    .map(|y| format!(" ({})", y))
-                    .unwrap_or_default()
+                params.year.map(|y| format!(" ({})", y)).unwrap_or_default()
             ),
             &data,
         ))
@@ -508,13 +513,9 @@ impl EodhdServer {
     ) -> Result<CallToolResult, McpError> {
         let data = self
             .client
-            .historical_market_cap(
-                &params.symbol,
-                params.from.as_deref(),
-                params.to.as_deref(),
-            )
+            .historical_market_cap(&params.symbol, params.from.as_deref(), params.to.as_deref())
             .await
-            .map_err(|e| err(e))?;
+            .map_err(err)?;
 
         ok_text(format_value(
             &format!("{} Historical Market Cap", params.symbol),
@@ -529,8 +530,140 @@ impl EodhdServer {
         description = "Get your EODHD API account information: subscription type, API call usage, daily rate limit, and remaining quota."
     )]
     async fn account(&self) -> Result<CallToolResult, McpError> {
-        let data = self.client.user().await.map_err(|e| err(e))?;
+        let data = self.client.user().await.map_err(err)?;
         ok_text(format_value("EODHD Account", &data))
+    }
+
+    // ── 16. US Options (Unicornbay) ─────────────────────────────────────
+
+    #[tool(
+        name = "options",
+        description = "Query the EODHD Unicornbay US Stock Options dataset (~6,000 underlyings, 2-year history, NASDAQ-routed). Modes: 'eod' (end-of-day option records with full Greeks — delta/gamma/theta/vega/rho — and bid/ask/volume/open_interest as a per-contract time series), 'contracts' (lighter contract-discovery metadata: strike/expiry/type), 'underlyings' (list of covered tickers; takes no filters). Filters: underlying_symbol (no exchange suffix), contract (OCC format), option_type (call/put), strike_from/to, exp_date_from/to/eq, tradetime_from/to, expiration_type. Pagination: page_offset/page_limit (server max 1000); set auto_paginate=true to follow links.next up to max_pages and merge the data arrays. Use the 'fields' parameter for sparse fieldsets and 'compact' to flatten the JSON:API envelope. Requires an active EODHD marketplace Options subscription on the account."
+    )]
+    async fn options(
+        &self,
+        Parameters(params): Parameters<OptionsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let valid_modes = ["eod", "contracts", "underlyings"];
+        if !valid_modes.contains(&params.mode.as_str()) {
+            return Err(err(format!(
+                "Invalid mode '{}'. Use: eod, contracts, underlyings",
+                params.mode
+            )));
+        }
+
+        // Reject filters on underlyings mode (server ignores them; fail fast).
+        if params.mode == "underlyings" && has_any_filter(&params) {
+            return Err(err(
+                "'underlyings' mode does not accept filters. Remove all filter parameters or switch to 'eod' / 'contracts'.".into()
+            ));
+        }
+
+        let mut notes: Vec<String> = Vec::new();
+
+        // Warn (non-fatal) if eod/contracts has no narrowing filter.
+        if (params.mode == "eod" || params.mode == "contracts")
+            && params.underlying_symbol.is_none()
+            && params.contract.is_none()
+        {
+            notes.push(
+                "no underlying_symbol or contract filter set — this query will scan the entire dataset and can exhaust your daily API quota. Add a filter to narrow the result.".into()
+            );
+        }
+
+        if let Some(lim) = params.page_limit {
+            if lim > 1000 {
+                notes.push(format!(
+                    "page_limit {} exceeds the server max of 1000 — clamped to 1000.",
+                    lim
+                ));
+            }
+        }
+
+        let query = build_options_query(&params);
+        let first = self
+            .client
+            .options_query(&params.mode, &query)
+            .await
+            .map_err(|e| err(scrub_token(&e)))?;
+
+        let auto = params.auto_paginate.unwrap_or(false);
+        let max_pages = params.max_pages.unwrap_or(5).max(1);
+
+        let merged = if auto {
+            let mut combined: Vec<Value> = first
+                .get("data")
+                .and_then(|d| d.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut meta = first
+                .get("meta")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            let mut next = first
+                .get("links")
+                .and_then(|l| l.get("next"))
+                .and_then(|n| n.as_str())
+                .map(|s| s.to_string());
+            let mut pages_fetched: u32 = 1;
+
+            while let Some(url) = next.clone() {
+                if pages_fetched >= max_pages {
+                    break;
+                }
+                let scrubbed = scrub_token(&url);
+                tracing::debug!(target: "eodhd_mcp", "options auto-paginate: fetching next page {}", scrubbed);
+                let page = self
+                    .client
+                    .options_follow_url(&url)
+                    .await
+                    .map_err(|e| err(scrub_token(&e)))?;
+                if let Some(arr) = page.get("data").and_then(|d| d.as_array()) {
+                    combined.extend(arr.iter().cloned());
+                }
+                if let Some(m) = page.get("meta").cloned() {
+                    meta = m;
+                }
+                next = page
+                    .get("links")
+                    .and_then(|l| l.get("next"))
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string());
+                pages_fetched += 1;
+            }
+
+            if let Value::Object(ref mut m) = meta {
+                m.insert("pages_fetched".into(), serde_json::json!(pages_fetched));
+                if next.is_some() {
+                    m.insert("pagination_cap_hit".into(), serde_json::json!(true));
+                }
+            }
+
+            let scrubbed_next: Value = next
+                .as_deref()
+                .map(|u| Value::String(scrub_token(u)))
+                .unwrap_or(Value::Null);
+
+            serde_json::json!({
+                "meta": meta,
+                "data": combined,
+                "links": { "next": scrubbed_next },
+            })
+        } else {
+            let mut v = first;
+            if let Some(links) = v.get_mut("links") {
+                if let Some(next) = links.get_mut("next") {
+                    if let Some(s) = next.as_str() {
+                        *next = Value::String(scrub_token(s));
+                    }
+                }
+            }
+            v
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(
+            render_options_response(&params.mode, &merged, &notes),
+        )]))
     }
 }
 
@@ -557,5 +690,405 @@ fn capitalize(s: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+    }
+}
+
+// ── Unicornbay Options helpers ──────────────────────────────────────────
+
+fn has_any_filter(p: &OptionsParams) -> bool {
+    p.underlying_symbol.is_some()
+        || p.contract.is_some()
+        || p.option_type.is_some()
+        || p.strike_from.is_some()
+        || p.strike_to.is_some()
+        || p.exp_date_from.is_some()
+        || p.exp_date_to.is_some()
+        || p.exp_date_eq.is_some()
+        || p.tradetime_from.is_some()
+        || p.tradetime_to.is_some()
+        || p.expiration_type.is_some()
+}
+
+fn format_number(n: f64) -> String {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e16 {
+        format!("{}", n as i64)
+    } else {
+        format!("{}", n)
+    }
+}
+
+fn build_options_query(p: &OptionsParams) -> Vec<(String, String)> {
+    let mut q: Vec<(String, String)> = Vec::new();
+
+    // underlyings mode takes no query parameters.
+    if p.mode == "underlyings" {
+        return q;
+    }
+
+    if let Some(v) = &p.underlying_symbol {
+        q.push(("filter[underlying_symbol]".into(), v.clone()));
+    }
+    if let Some(v) = &p.contract {
+        q.push(("filter[contract]".into(), v.clone()));
+    }
+    if let Some(v) = &p.option_type {
+        q.push(("filter[type]".into(), v.clone()));
+    }
+    if let Some(v) = p.strike_from {
+        q.push(("filter[strike_from]".into(), format_number(v)));
+    }
+    if let Some(v) = p.strike_to {
+        q.push(("filter[strike_to]".into(), format_number(v)));
+    }
+    if let Some(v) = &p.exp_date_from {
+        q.push(("filter[exp_date_from]".into(), v.clone()));
+    }
+    if let Some(v) = &p.exp_date_to {
+        q.push(("filter[exp_date_to]".into(), v.clone()));
+    }
+    if let Some(v) = &p.exp_date_eq {
+        q.push(("filter[exp_date_eq]".into(), v.clone()));
+    }
+    if let Some(v) = &p.tradetime_from {
+        q.push(("filter[tradetime_from]".into(), v.clone()));
+    }
+    if let Some(v) = &p.tradetime_to {
+        q.push(("filter[tradetime_to]".into(), v.clone()));
+    }
+    if let Some(v) = &p.expiration_type {
+        q.push(("filter[expiration_type]".into(), v.clone()));
+    }
+
+    if let Some(v) = &p.sort {
+        q.push(("sort".into(), v.clone()));
+    }
+
+    if let Some(off) = p.page_offset {
+        q.push(("page[offset]".into(), off.to_string()));
+    }
+    if let Some(lim) = p.page_limit {
+        q.push(("page[limit]".into(), lim.min(1000).to_string()));
+    }
+
+    if let Some(v) = &p.fields {
+        let key = match p.mode.as_str() {
+            "eod" => Some("fields[options-eod]"),
+            "contracts" => Some("fields[options-contracts]"),
+            _ => None,
+        };
+        if let Some(k) = key {
+            q.push((k.into(), v.clone()));
+        }
+    }
+
+    if p.compact.unwrap_or(false) {
+        q.push(("compact".into(), "1".into()));
+    }
+
+    q
+}
+
+/// Replace any `api_token=VALUE` occurrences with `api_token=***` so the user's key
+/// never ends up in logs, error messages, or surfaced pagination URLs. The token
+/// value is considered to run until the first non-token character (URL-safe chars:
+/// alphanumerics, `-`, `.`, `_`, `~`, `%`).
+fn scrub_token(s: &str) -> String {
+    let pattern = "api_token=";
+    let mut result = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(idx) = rest.find(pattern) {
+        let head_end = idx + pattern.len();
+        result.push_str(&rest[..head_end]);
+        result.push_str("***");
+        let after = &rest[head_end..];
+        let mut end = 0;
+        for (i, c) in after.char_indices() {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '~' || c == '%'
+            {
+                end = i + c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        rest = &after[end..];
+    }
+    result.push_str(rest);
+    result
+}
+
+/// Render a Unicornbay options response. For non-compact JSON:API records the
+/// `attributes` map is hoisted into a flat row so the standard table formatter
+/// produces a useful display; otherwise the response is dumped as JSON.
+fn render_options_response(mode: &str, body: &Value, notes: &[String]) -> String {
+    let mut out = String::new();
+    for n in notes {
+        out.push_str(&format!("> **Note:** {}\n\n", n));
+    }
+
+    let label = match mode {
+        "eod" => "Options EOD",
+        "contracts" => "Options Contracts",
+        "underlyings" => "Options Underlyings",
+        _ => "Options",
+    };
+
+    let data = body.get("data");
+    let meta = body.get("meta");
+    let next = body
+        .get("links")
+        .and_then(|l| l.get("next"))
+        .filter(|v| !v.is_null())
+        .and_then(|v| v.as_str());
+
+    let total = meta.and_then(|m| m.get("total")).and_then(|v| v.as_u64());
+    let pages_fetched = meta
+        .and_then(|m| m.get("pages_fetched"))
+        .and_then(|v| v.as_u64());
+    let cap_hit = meta
+        .and_then(|m| m.get("pagination_cap_hit"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let display = data.and_then(|d| d.as_array()).map(|arr| {
+        let rows: Vec<Value> = arr.iter().map(flatten_jsonapi).collect();
+        Value::Array(rows)
+    });
+
+    let mut header = label.to_string();
+    if let Some(t) = total {
+        header.push_str(&format!(" — total {}", t));
+    }
+    if let Some(p) = pages_fetched {
+        header.push_str(&format!(", pages fetched {}", p));
+    }
+    if cap_hit {
+        header.push_str(" (max_pages cap hit)");
+    }
+
+    match display {
+        Some(arr) => out.push_str(&format_value(&header, &arr)),
+        None => out.push_str(&format_value(&header, body)),
+    }
+
+    if let Some(url) = next {
+        out.push_str(&format!("\n\n**links.next:** `{}`\n", url));
+    }
+
+    out
+}
+
+/// If `item` is a JSON:API record `{id, type, attributes: {...}}`, hoist the
+/// attributes into a flat object (preserving id under `_id`). Otherwise return as-is.
+fn flatten_jsonapi(item: &Value) -> Value {
+    if let Some(attrs) = item.get("attributes").and_then(|a| a.as_object()) {
+        let mut flat = attrs.clone();
+        if let Some(id) = item.get("id") {
+            flat.insert("_id".into(), id.clone());
+        }
+        Value::Object(flat)
+    } else {
+        item.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::OptionsParams;
+
+    fn empty_params(mode: &str) -> OptionsParams {
+        OptionsParams {
+            mode: mode.into(),
+            underlying_symbol: None,
+            contract: None,
+            option_type: None,
+            strike_from: None,
+            strike_to: None,
+            exp_date_from: None,
+            exp_date_to: None,
+            exp_date_eq: None,
+            tradetime_from: None,
+            tradetime_to: None,
+            expiration_type: None,
+            sort: None,
+            page_offset: None,
+            page_limit: None,
+            fields: None,
+            compact: None,
+            auto_paginate: None,
+            max_pages: None,
+        }
+    }
+
+    #[test]
+    fn underlyings_mode_emits_no_query() {
+        let mut p = empty_params("underlyings");
+        // Filters set on this mode are dropped by the builder (the tool itself rejects them).
+        p.underlying_symbol = Some("AAPL".into());
+        assert!(build_options_query(&p).is_empty());
+    }
+
+    #[test]
+    fn all_eod_filters_serialize_to_jsonapi_brackets() {
+        let mut p = empty_params("eod");
+        p.underlying_symbol = Some("AAPL".into());
+        p.contract = Some("AAPL250321C00150000".into());
+        p.option_type = Some("call".into());
+        p.strike_from = Some(150.0);
+        p.strike_to = Some(200.5);
+        p.exp_date_from = Some("2024-01-21".into());
+        p.exp_date_to = Some("2024-01-28".into());
+        p.exp_date_eq = Some("2024-01-26".into());
+        p.tradetime_from = Some("2024-01-01".into());
+        p.tradetime_to = Some("2024-01-02".into());
+        p.expiration_type = Some("monthly".into());
+        p.sort = Some("-tradetime".into());
+        p.page_offset = Some(0);
+        p.page_limit = Some(50);
+        p.fields = Some("contract,bid,ask,delta".into());
+        p.compact = Some(true);
+
+        let q = build_options_query(&p);
+
+        let pairs: std::collections::HashMap<&str, &str> =
+            q.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+
+        assert_eq!(pairs["filter[underlying_symbol]"], "AAPL");
+        assert_eq!(pairs["filter[contract]"], "AAPL250321C00150000");
+        assert_eq!(pairs["filter[type]"], "call");
+        assert_eq!(pairs["filter[strike_from]"], "150");
+        assert_eq!(pairs["filter[strike_to]"], "200.5");
+        assert_eq!(pairs["filter[exp_date_from]"], "2024-01-21");
+        assert_eq!(pairs["filter[exp_date_to]"], "2024-01-28");
+        assert_eq!(pairs["filter[exp_date_eq]"], "2024-01-26");
+        assert_eq!(pairs["filter[tradetime_from]"], "2024-01-01");
+        assert_eq!(pairs["filter[tradetime_to]"], "2024-01-02");
+        assert_eq!(pairs["filter[expiration_type]"], "monthly");
+        assert_eq!(pairs["sort"], "-tradetime");
+        assert_eq!(pairs["page[offset]"], "0");
+        assert_eq!(pairs["page[limit]"], "50");
+        assert_eq!(pairs["fields[options-eod]"], "contract,bid,ask,delta");
+        assert_eq!(pairs["compact"], "1");
+    }
+
+    #[test]
+    fn page_limit_is_clamped_to_1000() {
+        let mut p = empty_params("eod");
+        p.page_limit = Some(5000);
+        let q = build_options_query(&p);
+        let lim = q
+            .iter()
+            .find(|(k, _)| k == "page[limit]")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(lim, "1000");
+    }
+
+    #[test]
+    fn fields_key_is_mode_specific() {
+        let mut p = empty_params("contracts");
+        p.fields = Some("strike,exp_date".into());
+        let q = build_options_query(&p);
+        assert!(q
+            .iter()
+            .any(|(k, v)| k == "fields[options-contracts]" && v == "strike,exp_date"));
+        assert!(!q.iter().any(|(k, _)| k == "fields[options-eod]"));
+    }
+
+    #[test]
+    fn fields_dropped_for_underlyings_mode() {
+        let mut p = empty_params("underlyings");
+        p.fields = Some("anything".into());
+        assert!(build_options_query(&p).is_empty());
+    }
+
+    #[test]
+    fn scrub_token_redacts_single_occurrence() {
+        let url = "https://eodhd.com/api/x?foo=bar&api_token=SECRET123&page=2";
+        assert_eq!(
+            scrub_token(url),
+            "https://eodhd.com/api/x?foo=bar&api_token=***&page=2"
+        );
+    }
+
+    #[test]
+    fn scrub_token_redacts_at_end_of_string() {
+        let url = "https://eodhd.com/api/x?api_token=SECRET";
+        assert_eq!(scrub_token(url), "https://eodhd.com/api/x?api_token=***");
+    }
+
+    #[test]
+    fn scrub_token_redacts_multiple_occurrences() {
+        let s = "first api_token=A&middle&api_token=B end";
+        assert_eq!(
+            scrub_token(s),
+            "first api_token=***&middle&api_token=*** end"
+        );
+    }
+
+    #[test]
+    fn scrub_token_no_op_when_missing() {
+        let s = "no token here";
+        assert_eq!(scrub_token(s), "no token here");
+    }
+
+    #[test]
+    fn flatten_jsonapi_hoists_attributes() {
+        let item = serde_json::json!({
+            "id": "AAPL231117C00300000-2023-11-17",
+            "type": "options-eod",
+            "attributes": {
+                "contract": "AAPL231117C00300000",
+                "strike": 300,
+                "bid": null
+            }
+        });
+        let flat = flatten_jsonapi(&item);
+        assert_eq!(flat["contract"], "AAPL231117C00300000");
+        assert_eq!(flat["strike"], 300);
+        assert!(flat["bid"].is_null());
+        assert_eq!(flat["_id"], "AAPL231117C00300000-2023-11-17");
+    }
+
+    #[test]
+    fn flatten_jsonapi_passthrough_for_flat_object() {
+        let item = serde_json::json!({"contract": "X", "strike": 100});
+        let flat = flatten_jsonapi(&item);
+        assert_eq!(flat, item);
+    }
+
+    #[test]
+    fn parses_canned_eod_response() {
+        let body = r#"{
+          "meta": {"offset": 0, "limit": 1000, "total": 2},
+          "data": [
+            {
+              "id": "AAPL231117C00300000-2023-11-17",
+              "type": "options-eod",
+              "attributes": {
+                "contract": "AAPL231117C00300000",
+                "underlying_symbol": "AAPL",
+                "exp_date": "2023-11-17",
+                "type": "call",
+                "strike": 300,
+                "bid": null,
+                "ask": 0.01,
+                "open_interest": 2300,
+                "delta": 0,
+                "tradetime": "2023-11-17"
+              }
+            }
+          ],
+          "links": {"next": "https://eodhd.com/api/mp/unicornbay/options/eod?page%5Boffset%5D=1000&api_token=ABC"}
+        }"#;
+        let v: Value = serde_json::from_str(body).unwrap();
+        let row = flatten_jsonapi(&v["data"][0]);
+        assert_eq!(row["contract"], "AAPL231117C00300000");
+        assert!(row["bid"].is_null());
+        assert_eq!(row["strike"], 300);
+
+        let next = v["links"]["next"].as_str().unwrap();
+        assert!(scrub_token(next).contains("api_token=***"));
+        assert!(!scrub_token(next).contains("ABC"));
     }
 }

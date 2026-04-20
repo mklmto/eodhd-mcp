@@ -13,7 +13,7 @@ pub fn format_value(label: &str, data: &Value) -> String {
         Value::Array(arr) if arr.is_empty() => {
             format!("**{}**\n\nNo results found.", label)
         }
-        Value::Object(map) if map.len() <= 20 && map.values().all(|v| is_scalar(v)) => {
+        Value::Object(map) if map.len() <= 20 && map.values().all(is_scalar) => {
             format_flat_object(label, data)
         }
         _ => format_as_json(label, data),
@@ -21,13 +21,20 @@ pub fn format_value(label: &str, data: &Value) -> String {
 }
 
 fn is_scalar(v: &Value) -> bool {
-    matches!(v, Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_))
+    matches!(
+        v,
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
+    )
 }
 
 /// Format an array of objects as a markdown table.
 fn format_object_array(label: &str, arr: &[Value]) -> String {
     let truncated = arr.len() > MAX_TABLE_ROWS;
-    let items = if truncated { &arr[..MAX_TABLE_ROWS] } else { arr };
+    let items = if truncated {
+        &arr[..MAX_TABLE_ROWS]
+    } else {
+        arr
+    };
 
     // Collect all keys in order
     let mut keys = BTreeSet::new();
@@ -45,9 +52,16 @@ fn format_object_array(label: &str, arr: &[Value]) -> String {
     }
 
     let mut out = String::new();
-    out.push_str(&format!("**{}** ({} row{}{})\n\n", label, arr.len(),
+    out.push_str(&format!(
+        "**{}** ({} row{}{})\n\n",
+        label,
+        arr.len(),
         if arr.len() == 1 { "" } else { "s" },
-        if truncated { format!(", showing first {}", MAX_TABLE_ROWS) } else { String::new() }
+        if truncated {
+            format!(", showing first {}", MAX_TABLE_ROWS)
+        } else {
+            String::new()
+        }
     ));
 
     // Header
@@ -82,7 +96,10 @@ fn format_object_array(label: &str, arr: &[Value]) -> String {
     }
 
     if truncated {
-        out.push_str(&format!("\n*... {} more rows not shown.*\n", arr.len() - MAX_TABLE_ROWS));
+        out.push_str(&format!(
+            "\n*... {} more rows not shown.*\n",
+            arr.len() - MAX_TABLE_ROWS
+        ));
     }
 
     out

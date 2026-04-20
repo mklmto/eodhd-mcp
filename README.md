@@ -4,7 +4,7 @@ A fast, compiled [MCP](https://modelcontextprotocol.io/) server written in Rust 
 
 ## Features
 
-- **15 tools** covering the full EODHD API surface (34+ endpoints)
+- **16 tools** covering the full EODHD API surface (37+ endpoints, including Unicornbay US options)
 - **Compiled Rust binary** — fast startup, low memory, no runtime dependencies
 - **Hybrid output** — markdown tables for tabular data, JSON for complex/nested responses
 - **Windows-native** — builds as a single `.exe`, no OpenSSL required (uses rustls)
@@ -74,6 +74,7 @@ If `EODHD_API_KEY` is not set, the server falls back to the EODHD demo key, whic
 | `screener` | Screen stocks by market cap, sector, dividend yield, signals, and other criteria |
 | `news` | Financial news articles with optional sentiment scores (-1 to +1) |
 | `insider_trading` | SEC Form 4 insider buy/sell transactions |
+| `options` | US stock options (Unicornbay): EOD Greeks/IV time series, contract discovery, underlyings list — with filters, sparse fieldsets, compact mode, and auto-pagination |
 
 ### Economic & Calendar
 
@@ -115,13 +116,26 @@ Once configured, you can ask Claude things like:
 - *"Show me upcoming earnings for this week"*
 - *"What's the US GDP trend over the last 10 years?"*
 - *"Get the latest financial news about NVIDIA"*
+- *"Pull the last 10 days of AAPL 150-strike call options with full Greeks"*
+- *"List AAPL option contracts expiring in the next 30 days, strikes 150 to 200"*
+- *"How many US underlyings does the Unicornbay options dataset cover?"*
+
+### Options tool notes
+
+The `options` tool wraps the EODHD Unicornbay US Stock Options dataset and **requires an active marketplace subscription** on your EODHD account (the same API key is used — no separate token). Coverage is ~6,000 US underlyings, 2-year EOD history, NASDAQ-routed. The three modes are:
+
+- `eod` — per-contract EOD time series with the full Greek set (delta, gamma, theta, vega, rho), bid/ask/last, volume, open interest, implied volatility.
+- `contracts` — lightweight contract discovery (strike, expiry, type) for an underlying.
+- `underlyings` — list of covered tickers; takes no filters.
+
+Set `auto_paginate=true` to follow `links.next` automatically (capped by `max_pages`, default 5). Use `fields` for a sparse fieldset and `compact=true` to flatten the JSON:API envelope. The API token is scrubbed from any surfaced pagination URLs.
 
 ## Project Structure
 
 ```
 src/
   main.rs      Entry point — env var loading, stdio server startup
-  server.rs    MCP server with all 15 tools (#[tool_router] macro)
+  server.rs    MCP server with all 16 tools (#[tool_router] macro)
   client.rs    HTTP client wrapping all EODHD API endpoints
   types.rs     Parameter structs with JSON Schema generation
   format.rs    Hybrid markdown/JSON output formatting
