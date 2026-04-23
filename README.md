@@ -1,16 +1,18 @@
 # EODHD MCP Server
 
-A fast, compiled [MCP](https://modelcontextprotocol.io/) server written in Rust that connects [Claude Desktop](https://claude.ai/download) to the [EODHD](https://eodhd.com/) financial data API — giving Claude direct access to stock prices, company fundamentals, technical indicators, news, macro economic data, and more, plus a capability layer (`snapshot`, `financials`, `compare`, `health_check`) that turns raw data into LLM-ready financial analysis.
+A fast, compiled [MCP](https://modelcontextprotocol.io/) server written in Rust that connects [Claude Desktop](https://claude.ai/download) to the [EODHD](https://eodhd.com/) financial data API — giving Claude direct access to stock prices, fundamentals, technical indicators, news, macro economic data, US options (Unicornbay), and more, plus a capability layer (`snapshot`, `financials`, `compare`, `health_check`) that turns raw data into LLM-ready financial analysis.
 
 ## Features
 
 - **20 tools** — 16 raw-API passthroughs covering 37+ EODHD endpoints (including Unicornbay US options) **plus 4 capability tools** (`snapshot`, `financials`, `compare`, `health_check`) that compose multiple endpoints with derived analytics
 - **Analytics layer** — 23 standard financial ratios, TTM rollups, Z-score anomaly detection, a 5-dimension health scorecard
-- **SQLite cache** — bundled (no system SQLite needed), per-endpoint TTL classes (60 s realtime, 24 h EOD, 7 d fundamentals, 1 h derived snapshots)
+- **Temporal slicing on `fundamentals`** — `last_n`, `from`, `to` clip every date-keyed periodic table server-side, so a single call can return "the last 4 quarters" instead of 30+ quarters of history
+- **SQLite cache** — bundled (no system SQLite needed), per-endpoint TTL classes (60 s realtime, 24 h EOD, 7 d fundamentals, 1 h derived snapshots); file lives next to the binary and is strictly a local per-user cache
 - **LLM-optimized output** — capability tools wrap responses in a `<summary>/<data>/<metadata>` envelope with prose summary, structured table, freshness, and warnings
 - **Compiled Rust binary** — fast startup, low memory, no runtime dependencies
-- **Windows-native** — builds as a single `.exe`, no OpenSSL required (uses rustls)
+- **Windows-native** — builds as a single `.exe`, no OpenSSL required (uses rustls). Also builds cleanly on Linux and macOS.
 - **stdio transport** — standard MCP protocol over stdin/stdout for Claude Desktop
+- **Tested** — 79 unit tests + 4 fixture-based integration tests, plus a live stdio validation harness
 
 ## Requirements
 
@@ -52,9 +54,24 @@ Add the following to your Claude Desktop config file:
 
 Restart Claude Desktop. You should see the EODHD tools available in the tools menu.
 
+### Verify the build (optional)
+
+A stdio smoke test against the binary is available under `scripts/`:
+
+```bash
+./scripts/validate.sh                                 # demo key (AAPL.US only)
+EODHD_API_KEY=your-key ./scripts/validate.sh          # full reference set
+```
+
+```powershell
+.\scripts\validate.ps1 -ApiKey your-key
+```
+
+Requires Python 3.9+. Exercises `snapshot` + `health_check` end-to-end and asserts the response envelope. See [Validation harness](#validation-harness) below for details.
+
 ### Demo Key
 
-If `EODHD_API_KEY` is not set, the server falls back to the EODHD demo key, which is limited to: `AAPL.US`, `TSLA.US`, `VTI.US`, `AMZN.US`, `BTC-USD.CC`, `EURUSD.FOREX`.
+If `EODHD_API_KEY` is not set, the server falls back to the EODHD demo key, which is limited to: `AAPL.US`, `TSLA.US`, `VTI.US`, `AMZN.US`, `BTC-USD.CC`, `EURUSD.FOREX`. The `search` endpoint is not available on the demo key.
 
 ## Tools
 
@@ -214,7 +231,7 @@ Requires Python 3.9+. Each tool call is timed; a `cache_hit=yes/no` indicator su
 
 ## Disclaimer
 
-This project is an independent, unofficial integration and is **not affiliated with, endorsed by, or sponsored by EODHD (EOD Historical Data)**. It is a thin API client — it does not store, cache, or redistribute any financial data.
+This project is an independent, unofficial integration and is **not affiliated with, endorsed by, or sponsored by EODHD (EOD Historical Data)**. It does not redistribute any financial data. Responses are cached locally in a per-user SQLite file (see [Cache configuration](#cache-configuration)) purely to reduce duplicate API calls on behalf of the person who issued them; set `EODHD_CACHE_DISABLED=1` to opt out.
 
 **You must have your own EODHD API subscription** to use this server. All data retrieved through this tool is subject to [EODHD's Terms and Conditions](https://eodhd.com/financial-apis/terms-conditions). Your rights to use, display, or redistribute the data depend on your subscription tier (personal, commercial, enterprise). It is your responsibility to comply with EODHD's terms for your plan.
 
