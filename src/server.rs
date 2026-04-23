@@ -4,9 +4,18 @@ use rmcp::{
 };
 use serde_json::Value;
 
+use crate::cache::Cache;
 use crate::client::EodhdClient;
 use crate::format::format_value;
+use crate::tools;
 use crate::types::*;
+
+/// Today's date as `YYYY-MM-DD` (UTC) — used as the default `as_of` for
+/// new capability tools. Not a user-facing function; lives here so the
+/// imports stay scoped to this module.
+fn today_iso() -> String {
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
+}
 
 fn err(msg: String) -> McpError {
     McpError::internal_error(msg, None)
@@ -19,6 +28,7 @@ fn ok_text(text: String) -> Result<CallToolResult, McpError> {
 #[derive(Clone)]
 pub struct EodhdServer {
     client: EodhdClient,
+    cache: Cache,
     tool_router: ToolRouter<Self>,
 }
 
@@ -26,8 +36,10 @@ pub struct EodhdServer {
 impl EodhdServer {
     pub fn new(api_key: String) -> Self {
         let client = EodhdClient::new(api_key);
+        let cache = Cache::open_default();
         Self {
             client,
+            cache,
             tool_router: Self::tool_router(),
         }
     }
@@ -120,7 +132,7 @@ impl EodhdServer {
 
     #[tool(
         name = "fundamentals",
-        description = "Get company fundamental data: general info, financials (income statement, balance sheet, cash flow), highlights, valuation, earnings, ESG scores, analyst ratings, and more. Use the 'filter' parameter to extract specific sections (e.g. 'General', 'Highlights', 'Financials::Balance_Sheet::yearly', 'Valuation'). Without filter returns full data (can be very large). Works for stocks, ETFs, mutual funds, and indices."
+        description = "Get company fundamental data: general info, financials (income statement, balance sheet, cash flow), highlights, valuation, earnings, ESG scores, analyst ratings, and more. Use the 'filter' parameter to extract specific sections (e.g. 'General', 'Highlights', 'Financials::Balance_Sheet::yearly', 'Valuation'). Use 'last_n' to keep only the N most recent quarters/years from any date-keyed periodic table (avoids returning 30+ quarters of historical noise). 'from' and 'to' (YYYY-MM-DD) further restrict the date range. Without filter returns full data — combine with 'last_n' to keep response size manageable. Works for stocks, ETFs, mutual funds, and indices."
     )]
     async fn fundamentals(
         &self,
@@ -128,13 +140,29 @@ impl EodhdServer {
     ) -> Result<CallToolResult, McpError> {
         let data = self
             .client
-            .fundamentals(&params.symbol, params.filter.as_deref())
+            .fundamentals_sliced(
+                &params.symbol,
+                params.filter.as_deref(),
+                params.last_n,
+                params.from.as_deref(),
+                params.to.as_deref(),
+            )
             .await
             .map_err(err)?;
-        let label = match &params.filter {
+        let mut label = match &params.filter {
             Some(f) => format!("{} fundamentals ({})", params.symbol, f),
             None => format!("{} fundamentals (full)", params.symbol),
         };
+        if let Some(n) = params.last_n {
+            label.push_str(&format!(", last {}", n));
+        }
+        if params.from.is_some() || params.to.is_some() {
+            label.push_str(&format!(
+                ", range {}..{}",
+                params.from.as_deref().unwrap_or(""),
+                params.to.as_deref().unwrap_or("")
+            ));
+        }
         ok_text(format_value(&label, &data))
     }
 
@@ -532,6 +560,81 @@ impl EodhdServer {
     async fn account(&self) -> Result<CallToolResult, McpError> {
         let data = self.client.user().await.map_err(err)?;
         ok_text(format_value("EODHD Account", &data))
+    }
+
+    // ── 17. Snapshot (capability tool) ──────────────────────────────────
+
+    #[tool(
+        name = "snapshot",
+        description = "One-call financial profile composing General + Highlights + Valuation + SharesStats + Financials::* with derived analytics (TTM margins, leverage, FCF yield, YoY growth, freshness, warnings). Replaces the 5-7 fundamentals calls previously needed to assess a company. Returns the spec §5.5 envelope: <summary> prose / <data> structured JSON / <metadata>. Cached 7 days under the fundamentals TTL class. Symbol format: TICKER.EXCHANGE."
+    )]
+    async fn snapshot(
+        &self,
+        Parameters(params): Parameters<SnapshotParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let as_of = params.as_of.unwrap_or_else(today_iso);
+        let body = tools::snapshot::run(&self.client, &self.cache, &params.symbol, &as_of)
+            .await
+            .map_err(err)?;
+        ok_text(body)
+    }
+
+    // ── 18. Financials (DataFrame view) ─────────────────────────────────
+
+    #[tool(
+        name = "financials",
+        description = "DataFrame-shaped financial statements with derived rows. Statement: 'income', 'balance', 'cashflow', or 'all'. Period: 'quarterly' (default) or 'yearly'. last_n (default 8) caps period count. Output is a markdown table per statement: rows = native EODHD line items + derived rows (margins %, QoQ revenue growth, FCF, net debt) + a TTM_4Q column on quarterly views. Wrapped in the spec §5.5 envelope. Shares the fundamentals cache with snapshot/health_check (7-day TTL)."
+    )]
+    async fn financials(
+        &self,
+        Parameters(params): Parameters<FinancialsToolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let opts = tools::financials::Options::new(
+            &params.statement,
+            params.period.as_deref(),
+            params.last_n,
+        )
+        .map_err(err)?;
+        let as_of = params.as_of.unwrap_or_else(today_iso);
+        let body = tools::financials::run(&self.client, &self.cache, &params.symbol, opts, &as_of)
+            .await
+            .map_err(err)?;
+        ok_text(body)
+    }
+
+    // ── 19. Compare (multi-ticker) ──────────────────────────────────────
+
+    #[tool(
+        name = "compare",
+        description = "Side-by-side metric comparison across up to 5 tickers. 'symbols' is comma-separated (e.g. 'ALYA.TO,GIB.TO,ACN.US'); 'metrics' is comma-separated metric keys (e.g. 'ev_ebitda,ps,gross_margin,roe,net_debt_to_ebitda,fcf_yield,revenue_yoy'). Available keys cover profitability (gross/operating/ebitda/net margin, roe, roa, roic), liquidity (current/quick/cash ratio), solvency (debt_to_equity, net_debt_to_ebitda, interest_coverage), efficiency (asset/inventory turnover, dso), valuation (pe, forward_pe, ps, pb, ev_revenue, ev_ebitda, fcf_yield, peg), and growth (revenue_yoy, net_income_yoy). Returns a values table and a ranking table (1=best per metric, direction-aware: lower wins for debt/valuation, higher wins for margins/growth). Wrapped in the spec §5.5 envelope. Fetches in parallel against the shared fundamentals cache."
+    )]
+    async fn compare(
+        &self,
+        Parameters(params): Parameters<CompareParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let opts = tools::compare::Options::parse(&params.symbols, &params.metrics).map_err(err)?;
+        let as_of = params.as_of.unwrap_or_else(today_iso);
+        let body = tools::compare::run(&self.client, &self.cache, opts, &as_of)
+            .await
+            .map_err(err)?;
+        ok_text(body)
+    }
+
+    // ── 20. Health Check (scorecard) ────────────────────────────────────
+
+    #[tool(
+        name = "health_check",
+        description = "Five-dimension financial health scorecard. Computes 0-100 scores for Profitability, Liquidity, Solvency, Efficiency, and Growth based on band thresholds, plus a composite. Surfaces red flags per spec Appendix C: net debt / EBITDA > 3×, interest coverage < 3×, revenue YoY < 0 for 3 consecutive quarters, CFO < net income for 3 consecutive quarters (earnings quality), negative retained earnings + active buyback, Z-score outliers on otherNonCashItems (proxy for non-recurring charges), and gross margin > 2σ deviation. Wrapped in spec §5.5 envelope. Reuses the shared fundamentals cache."
+    )]
+    async fn health_check(
+        &self,
+        Parameters(params): Parameters<HealthCheckParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let as_of = params.as_of.unwrap_or_else(today_iso);
+        let body = tools::health_check::run(&self.client, &self.cache, &params.symbol, &as_of)
+            .await
+            .map_err(err)?;
+        ok_text(body)
     }
 
     // ── 16. US Options (Unicornbay) ─────────────────────────────────────

@@ -1,6 +1,9 @@
+mod analytics;
+mod cache;
 mod client;
 mod format;
 mod server;
+mod tools;
 mod types;
 
 use rmcp::{transport::stdio, ServiceExt};

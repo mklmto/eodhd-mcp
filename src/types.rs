@@ -2,6 +2,50 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct SnapshotParams {
+    /// Ticker symbol with exchange, e.g. "AAPL.US", "ALYA.TO"
+    pub symbol: String,
+    /// Optional reference date (YYYY-MM-DD) recorded in the response metadata.
+    /// Does NOT alter what data is fetched — point-in-time queries are not yet
+    /// supported. Defaults to today.
+    pub as_of: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct FinancialsToolParams {
+    /// Ticker symbol with exchange, e.g. "AAPL.US"
+    pub symbol: String,
+    /// Statement to return: "income", "balance", "cashflow", or "all".
+    pub statement: String,
+    /// Period: "quarterly" (default) or "yearly".
+    pub period: Option<String>,
+    /// Number of most-recent periods to include. Default 8.
+    pub last_n: Option<usize>,
+    /// Reference date for the metadata block. Defaults to today.
+    pub as_of: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct CompareParams {
+    /// Comma-separated ticker list (max 5), e.g. "ALYA.TO,GIB.TO,ACN.US".
+    pub symbols: String,
+    /// Comma-separated normalized metric keys, e.g.
+    /// "ev_ebitda,ps,gross_margin,roe,net_debt_to_ebitda,fcf_yield,revenue_yoy".
+    /// Available keys match the RatioSet field names plus growth metrics.
+    pub metrics: String,
+    /// Reference date for the metadata block. Defaults to today.
+    pub as_of: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct HealthCheckParams {
+    /// Ticker symbol with exchange, e.g. "AAPL.US"
+    pub symbol: String,
+    /// Reference date for the metadata block. Defaults to today.
+    pub as_of: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SearchParams {
     /// Search query — ticker symbol, company name, or ISIN
     pub query: String,
@@ -40,6 +84,14 @@ pub struct FundamentalsParams {
     /// Dot-separated filter path to return specific data, e.g. "General", "General::Code",
     /// "Financials::Balance_Sheet::yearly", "Highlights". Leave empty for full data.
     pub filter: Option<String>,
+    /// Keep only the N most recent periods in any date-keyed periodic table found in
+    /// the response (e.g. `Financials::*::quarterly`). Avoids returning 30+ quarters
+    /// of historical noise. Applied after `from`/`to`. Optional.
+    pub last_n: Option<usize>,
+    /// Lower-bound date (YYYY-MM-DD, inclusive) for periodic tables. Optional.
+    pub from: Option<String>,
+    /// Upper-bound date (YYYY-MM-DD, inclusive) for periodic tables. Optional.
+    pub to: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

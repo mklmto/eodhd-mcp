@@ -1,6 +1,8 @@
 use reqwest::Client;
 use serde_json::Value;
 
+use crate::analytics::slice_periodic;
+
 const BASE_URL: &str = "https://eodhd.com/api";
 
 #[derive(Clone)]
@@ -129,13 +131,27 @@ impl EodhdClient {
 
     // ── Fundamentals ────────────────────────────────────────────────────
 
-    pub async fn fundamentals(&self, symbol: &str, filter: Option<&str>) -> Result<Value, String> {
+    /// Fetch `/fundamentals/{symbol}` and (optionally) slice any date-keyed
+    /// periodic tables in the returned tree by `last_n` / `from` / `to`.
+    /// EODHD's endpoint doesn't accept these natively, so we slice client-side
+    /// after the fetch — the JSON shape is preserved for everything else.
+    pub async fn fundamentals_sliced(
+        &self,
+        symbol: &str,
+        filter: Option<&str>,
+        last_n: Option<usize>,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<Value, String> {
         let mut params: Vec<(&str, &str)> = Vec::new();
         if let Some(v) = filter {
             params.push(("filter", v));
         }
-        self.get(&format!("/fundamentals/{}", symbol), &params)
-            .await
+        let mut value = self
+            .get(&format!("/fundamentals/{}", symbol), &params)
+            .await?;
+        slice_periodic(&mut value, last_n, from, to);
+        Ok(value)
     }
 
     // ── Dividends ───────────────────────────────────────────────────────
